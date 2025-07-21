@@ -6,7 +6,7 @@
 # https://github.com/Softmotions/autark
 
 META_VERSION=0.9.0
-META_REVISION=a0528e1
+META_REVISION=4db68cc
 cd "$(cd "$(dirname "$0")"; pwd -P)"
 
 prev_arg=""
@@ -62,7 +62,7 @@ cat <<'a292effa503b' > ${AUTARK_HOME}/autark.c
 #ifndef CONFIG_H
 #define CONFIG_H
 #define META_VERSION "0.9.0"
-#define META_REVISION "a0528e1"
+#define META_REVISION "4db68cc"
 #endif
 #define _AMALGAMATE_
 #define _XOPEN_SOURCE 600
@@ -5818,7 +5818,7 @@ static int _usage_va(const char *err, va_list ap) {
   fprintf(stderr,
           "        --libdir=<>             Path to 'lib' dir relative to a `prefix` dir. Default: lib\n");
   fprintf(stderr,
-          "        --datadir=<>             Path to 'data' dir relative to a `prefix` dir. Default: share\n");
+          "        --datadir=<>            Path to 'data' dir relative to a `prefix` dir. Default: share\n");
   fprintf(stderr,
           "        --includedir=<>         Path to 'include' dir relative to `prefix` dir. Default: include\n");
   fprintf(stderr,
