@@ -1,0 +1,52 @@
+# Builds libhello and its artifacts.
+# Sets the variable LIBHELLO_A in the scope of the parent script.
+set {
+  # Declare the variable in the parent scope.
+  parent {
+    LIBHELLO_A
+  }
+  # The file libhello.a is resolved to an absolute path
+  # relative to the script's current cache directory.
+  CC{libhello.a}
+}
+
+cc {
+  hello.c 
+  ${CFLAGS}
+  ${CC}
+  consumes {
+    # hello.h is a product of the `configure` rule,
+    # so we declare our dependency on it here.
+    hello.h
+  }
+}
+
+# Builds the static library libhello.a
+run {
+  exec { ${AR} rcs libhello.a ${CC_OBJS} }
+  consumes {
+    ${CC_OBJS}
+  }
+  produces {
+    ${LIBHELLO_A}
+  }
+}
+
+# Generates hello.h from hello.h.in using the `configure` rule
+configure {
+  hello.h.in
+}
+
+# Installs the static library to ${INSTALL_LIB_DIR}, relative to the installation prefix.
+# INSTALL_LIB_DIR is defined by the Autark engine.
+install {
+  ${INSTALL_LIB_DIR}
+  ${LIBHELLO_A}
+}
+
+# Installs the hello.h header to ${INSTALL_INCLUDE_DIR}/libhello
+install {
+  # Note: ^{...} is a simple string join
+  ^{${INSTALL_INCLUDE_DIR} /libhello}
+  hello.h
+}

@@ -1,0 +1,8 @@
+#pragma once
+
+//autarkdef HELLO_MSG " 
+
+// Altenate way to define HELLO_MSG:
+// #define HELLO_MSG "@HELLO_MSG@"
+
+const char* hello_get_msg(void);
