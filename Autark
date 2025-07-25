@@ -132,7 +132,7 @@ include { libhello/Autark }
 #   [produces{...}]
 # }
 run {
-  exec { ${CC} -static ${LDFLAGS} -o ${META_ARTIFACT} ${CC_OBJS} ${LIBHELLO_A} }
+  exec { ${CC} ${LDFLAGS} -o ${META_ARTIFACT} ${CC_OBJS} ${LIBHELLO_A} }
   consumes {
     ${CC_OBJS}
     ${LIBHELLO_A}
