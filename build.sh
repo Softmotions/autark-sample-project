@@ -1,12 +1,12 @@
 #!/bin/sh
 # MIT License
 # Autark (https://autark.dev) build system script wrapper.
-# Copyright (c) 2012-2025 Softmotions Ltd <info@softmotions.com>
+# Copyright (c) 2012-2026 Softmotions Ltd <info@softmotions.com>
 # Autark: aec5320de2e44ef5a0338f9ea990ed2a
 # https://github.com/Softmotions/autark
 
-META_VERSION=0.9.0
-META_REVISION=607c002
+META_VERSION=0.9.4
+META_REVISION=ed72a54
 cd "$(cd "$(dirname "$0")"; pwd -P)"
 
 prev_arg=""
@@ -61,8 +61,8 @@ mkdir -p ${AUTARK_HOME}
 cat <<'a292effa503b' > ${AUTARK_HOME}/autark.c
 #ifndef CONFIG_H
 #define CONFIG_H
-#define META_VERSION "0.9.0"
-#define META_REVISION "607c002"
+#define META_VERSION "0.9.4"
+#define META_REVISION "ed72a54"
 #define MACRO_MAX_RECURSIVE_CALLS 128
 #endif
 #define _AMALGAMATE_
@@ -164,7 +164,6 @@ static inline int value_destroy(struct value *v) {
 enum akecode {
   AK_ERROR_OK                        = 0,
   AK_ERROR_FAIL                      = -1,
-  AK_ERROR_UNIMPLEMETED              = -2,
   AK_ERROR_INVALID_ARGS              = -3,
   AK_ERROR_ASSERTION                 = -4,
   AK_ERROR_OVERFLOW                  = -5,
@@ -1497,8 +1496,6 @@ static const char* _error_get(int code) {
       return "Fail (AK_ERROR_FAIL)";
     case AK_ERROR_IO:
       return "IO Error (AK_ERROR_IO)";
-    case AK_ERROR_UNIMPLEMETED:
-      return "Not implemented (AK_ERROR_UNIMPLEMETED)";
     case AK_ERROR_SCRIPT_SYNTAX:
       return "Invalid autark config syntax (AK_ERROR_SCRIPT_SYNTAX)";
     case AK_ERROR_SCRIPT:
@@ -3251,11 +3248,11 @@ static void _check_on_resolve(struct node_resolve *r) {
   }
   int rc = spawn_do(s);
   if (rc) {
-    node_fatal(rc, n, "%s", unit->source_path);
+    node_fatal(rc, n, "%s", path);
   } else {
     int code = spawn_exit_code(s);
     if (code != 0) {
-      node_fatal(AK_ERROR_EXTERNAL_COMMAND, n, "%s: %d", unit->source_path, code);
+      node_fatal(AK_ERROR_EXTERNAL_COMMAND, n, "%s: %d", path, code);
     }
   }
   spawn_destroy(s);
@@ -3265,6 +3262,7 @@ static void _check_on_resolve(struct node_resolve *r) {
   if (rc) {
     node_fatal(rc, unit->n, "Failed to open depencency file: %s", r->deps_path_tmp);
   }
+  deps_add(&deps, DEPS_TYPE_FILE, 0, path, 0);
   node_add_unit_deps(n, &deps);
   deps_close(&deps);
 }
@@ -3820,6 +3818,7 @@ int node_if_setup(struct node *n) {
 #ifndef _AMALGAMATE_
 #include "script.h"
 #include "xstr.h"
+#include "utils.h"
 #include <stdlib.h>
 #endif
 static const char* _join_value(struct node *n) {
@@ -3832,12 +3831,56 @@ static const char* _join_value(struct node *n) {
     return n->impl;
   }
   struct xstr *xstr = xstr_create_empty();
+  int c = 0;
+  struct node *pair[] = { 0, 0 };
+  for (struct node *nn = n->child; nn; nn = nn->next, ++c) {
+    if (c < 2) {
+      pair[c] = nn;
+    }
+  }
+  if (c == 2) {
+    const char *vpair[] = { node_value(pair[0]), node_value(pair[1]) };
+    if ((vpair[0] && !is_vlist(vpair[0]) && is_vlist(vpair[1]))) {
+      const char *prefix = vpair[0];
+      size_t prefix_len = strlen(prefix);
+      struct vlist_iter iter;
+      vlist_iter_init(vpair[1], &iter);
+      while (vlist_iter_next(&iter)) {
+        xstr_cat2(xstr, "\1", 1);
+        xstr_cat2(xstr, prefix, prefix_len);
+        xstr_cat2(xstr, iter.item, iter.len);
+      }
+      n->impl = xstr_destroy_keep_ptr(xstr);
+      return n->impl;
+    } else if (vpair[1] && !is_vlist(vpair[1]) && is_vlist(vpair[0])) {
+      const char *suffix = vpair[1];
+      size_t suffix_len = strlen(suffix);
+      struct vlist_iter iter;
+      vlist_iter_init(vpair[0], &iter);
+      while (vlist_iter_next(&iter)) {
+        xstr_cat2(xstr, "\1", 1);
+        xstr_cat2(xstr, iter.item, iter.len);
+        xstr_cat2(xstr, suffix, suffix_len);
+      }
+      n->impl = xstr_destroy_keep_ptr(xstr);
+      return n->impl;
+    }
+  }
   bool list = n->value[0] == '.';
   for (struct node *nn = n->child; nn; nn = nn->next) {
     if (list) {
       xstr_cat(xstr, "\1");
     }
-    xstr_cat(xstr, node_value(nn));
+    const char *val = node_value(nn);
+    if (is_vlist(val)) {
+      struct vlist_iter iter;
+      vlist_iter_init(val, &iter);
+      while (vlist_iter_next(&iter)) {
+        xstr_cat2(xstr, iter.item, iter.len);
+      }
+    } else {
+      xstr_cat(xstr, val);
+    }
   }
   n->impl = xstr_destroy_keep_ptr(xstr);
   return n->impl;
@@ -5161,9 +5204,18 @@ int node_in_sources_setup(struct node *n) {
 #include "env.h"
 #include "paths.h"
 #include "utils.h"
-#include "alloc.h"
 #include <unistd.h>
 #endif
+static void _node_dir_normalize_add(const char *dir, struct xstr *xstr, const char *v, char buf[PATH_MAX]) {
+  if (xstr_size(xstr)) {
+    if (!is_vlist(xstr_ptr(xstr))) {
+      xstr_unshift(xstr, "\1", 1);
+    }
+    xstr_cat2(xstr, "\1", 1);
+  }
+  char *path = path_normalize_cwd(v, dir, buf);
+  xstr_cat(xstr, path);
+}
 static const char* _dir_value(struct node *n) {
   struct node_foreach *fe = node_find_parent_foreach(n);
   if (fe) {
@@ -5197,23 +5249,20 @@ static const char* _dir_value(struct node *n) {
       struct vlist_iter iter;
       vlist_iter_init(v, &iter);
       while (vlist_iter_next(&iter)) {
-        if (xstr_size(xstr) && iter.len) {
-          if (iter.item[0] != '/' && !utils_endswith(xstr_ptr(xstr), "/")) {
-            xstr_cat2(xstr, "/", 1);
-          }
+        if (iter.len) {
+          char vbuf[iter.len + 1];
+          utils_strnncpy(vbuf, iter.item, iter.len, iter.len + 1);
+          _node_dir_normalize_add(dir, xstr, vbuf, buf);
         }
-        xstr_cat2(xstr, iter.item, iter.len);
       }
     } else {
-      xstr_cat(xstr, v);
+      _node_dir_normalize_add(dir, xstr, v, buf);
     }
   }
   if (xstr_size(xstr) == 0) {
-    xstr_cat2(xstr, ".", 1);
+    _node_dir_normalize_add(dir, xstr, ".", buf);
   }
-  char *path = path_normalize_cwd(xstr_ptr(xstr), dir, buf);
-  xstr_destroy(xstr);
-  n->impl = xstrdup(path);
+  n->impl = xstr_destroy_keep_ptr(xstr);
   return n->impl;
 }
 static void _dir_dispose(struct node *n) {
