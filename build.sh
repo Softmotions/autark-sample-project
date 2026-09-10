@@ -5,8 +5,8 @@
 # Autark: aec5320de2e44ef5a0338f9ea990ed2a
 # https://github.com/Softmotions/autark
 
-META_VERSION=0.9.11
-META_REVISION=4d375c3
+META_VERSION=0.9.13
+META_REVISION=6c1150c
 cd "$(cd "$(dirname "$0")"; pwd -P)"
 
 prev_arg=""
@@ -67,8 +67,8 @@ mkdir -p ${AUTARK_HOME}
 cat <<'a292effa503b' > ${AUTARK_HOME}/autark.c
 #ifndef CONFIG_H
 #define CONFIG_H
-#define META_VERSION "0.9.11"
-#define META_REVISION "4d375c3"
+#define META_VERSION "0.9.13"
+#define META_REVISION "6c1150c"
 #define MACRO_MAX_RECURSIVE_CALLS 128
 #endif
 #define _AMALGAMATE_
@@ -2962,9 +2962,12 @@ bool path_is_exist(const char *path) {
   return st.ftype != AKPATH_NOT_EXISTS;
 }
 static inline int _path_num_segments(const char *path) {
+  if (path[0] == '/' && path[1] == '\0') {
+    return 0;
+  }
   int c = 0;
-  for (const char *rp = path; *rp != '\0'; ++rp) {
-    if (*rp == '/' || *rp == '\0') {
+  for (const char *rp = path; *rp; ++rp) {
+    if (*rp == '/') {
       ++c;
     }
   }
@@ -3007,7 +3010,16 @@ char* path_relativize_cwd(const char *from_, const char *to_, const char *cwd) {
   if (*srp != '\0') {
     xstr_cat(xstr, srp + 1);
   }
-  return xstr_destroy_keep_ptr(xstr);
+  char *ret = xstr_destroy_keep_ptr(xstr);
+  if (*ret == '\0') {
+    free(ret);
+    return xstrdup(".");
+  }
+  size_t len = strlen(ret);
+  if (len > 1 && ret[len - 1] == '/') {
+    ret[len - 1] = '\0';
+  }
+  return ret;
 }
 char* path_dirname(char *path) {
   return dirname(path);
@@ -8453,7 +8465,7 @@ static unsigned _rule_type(const char *key, unsigned *flags) {
     return NODE_TYPE_JOIN;
   } else if (strcmp(key, "set") == 0 || strcmp(key, "env") == 0 || strcmp(key, "let") == 0) {
     return NODE_TYPE_SET;
-  } else if (strcmp(key, "check") == 0) {
+  } else if (strcmp(key, "check") == 0 || strcmp(key, "prepare") == 0) {
     return NODE_TYPE_CHECK;
   } else if (strcmp(key, "include") == 0) {
     return NODE_TYPE_INCLUDE;
@@ -9503,7 +9515,7 @@ void node_resolve(struct node_resolve *r) {
     }
   }
   if (r->on_env_value && (r->mode & NODE_RESOLVE_ENV_ALWAYS) && (env_created || !access(env_path, R_OK))) {
-    char buf[4096];
+    char buf[16384];
     FILE *f = fopen(env_path, "r");
     if (f) {
       while (fgets(buf, sizeof(buf), f)) {
